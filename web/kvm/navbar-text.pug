@@ -1,0 +1,46 @@
+li.right#text-dropdown
+	a.menu-button(href="#")
+		+navbar_led("stream-ocr-led", "led-gear", "feature-disabled")
+		span Text
+
+	.menu#text-menu
+		.text
+			b Paste text as keypress sequence#[br]
+			sub Please note that PiKVM cannot switch the keyboard layout
+		hr
+		.text(style="margin-right: 20px")
+			textarea#hid-pak-text(data-focus placeholder="Enter your text here")
+		table.kv
+			tr
+				td #[button#hid-pak-button(disabled data-force-hide-menu) &bull; Paste]
+				td using host keymap
+				td #[select#hid-pak-keymap-selector]
+		table.kv
+			tr
+				+menu_switch_td2("hid-pak-slow-switch", true, false) Slow typing:
+			tr
+				+menu_switch_td2("hid-pak-secure-switch", true, false) Hide input text:
+			tr
+				+menu_switch_td2("hid-pak-ask-switch", true, true) Ask paste confirmation:
+
+		.feature-disabled#stream-ocr
+			hr
+			br
+			hr
+			.text
+				b Text recognition <sup><i>&beta;</i></sup>#[br]
+				sub #[a(target="_blank" href="https://docs.pikvm.org/ocr") OCR] works locally on PiKVM
+			hr
+			table.kv
+				tr
+					td #[button#stream-ocr-button(data-force-hide-menu) &bull; Select area]
+					td for
+					td #[select#stream-ocr-lang-selector]
+					td text recognition
+			table.kv
+				tr
+					td(colspan="4") &bull; Press #[b Enter] to recognize and copy text to clipboard
+				tr
+					td(colspan="4") &bull; Press #[b Esc] to cancel selection
+				tr
+					td
