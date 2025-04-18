@@ -73,6 +73,11 @@ class _StreamerParams:
         h264_gop: int,
         h264_gop_min: int,
         h264_gop_max: int,
+
+        whip_url: str,              # live777的WHIP地址
+        whip_token: str = "",       # 可选的认证token
+        ffmpeg_input_format: str = "v4l2",  # 输入格式
+        ffmpeg_codec: str = "libx264",   # WebRTC编码器
     ) -> None:
 
         self.__has_quality = bool(quality)
@@ -94,6 +99,13 @@ class _StreamerParams:
             self.__limits[self.__H264_BITRATE] = {"min": h264_bitrate_min, "max": h264_bitrate_max}
             self.__params[self.__H264_GOP] = min(max(h264_gop, h264_gop_min), h264_gop_max)
             self.__limits[self.__H264_GOP] = {"min": h264_gop_min, "max": h264_gop_max}
+
+        self.__params.update({
+            "whip_url": whip_url,
+            "whip_token": whip_token,
+            "ffmpeg_input_format": ffmpeg_input_format,
+            "ffmpeg_codec": ffmpeg_codec,
+        })
 
     def get_features(self) -> dict:
         return {
@@ -332,14 +344,18 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                 yield new
 
     async def __get_streamer_state(self) -> (dict | None):
-        if self.__streamer_task:
-            session = self.__ensure_client_session()
+        if self.__streamer_proc:
             try:
-                return (await session.get_state())
-            except (aiohttp.ClientConnectionError, aiohttp.ServerConnectionError):
-                pass
+                # 检查ffmpeg进程状态
+                if self.__streamer_proc.returncode is None:
+                    return {
+                        "online": True,
+                        "encoder": "vp8",
+                        "resolution": self.__params.get_params().get("resolution", "1920x1080"),
+                        "fps": self.__params.get_params().get("desired_fps", 30),
+                    }
             except Exception:
-                get_logger().exception("Invalid streamer response from /state")
+                get_logger().exception("Failed to get streamer state")
         return None
 
     def __get_snapshot_state(self) -> dict:
@@ -407,33 +423,64 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
 
     # =====
 
-    async def __streamer_task_loop(self) -> None:  # pylint: disable=too-many-branches
+    async def __streamer_task_loop(self) -> None:
         logger = get_logger(0)
-        while True:  # pylint: disable=too-many-nested-blocks
+        while True:
             try:
                 await self.__start_streamer_proc()
                 assert self.__streamer_proc is not None
-                await aioproc.log_stdout_infinite(self.__streamer_proc, logger)
+                
+                # 同时监控stdout和stderr
+                await asyncio.gather(
+                    aioproc.log_stdout_infinite(self.__streamer_proc, logger),
+                    aioproc.log_stderr_infinite(self.__streamer_proc, logger)
+                )
+                
                 raise RuntimeError("Streamer unexpectedly died")
             except asyncio.CancelledError:
                 break
             except Exception:
                 if self.__streamer_proc:
-                    logger.exception("Unexpected streamer error: pid=%d", self.__streamer_proc.pid)
+                    logger.exception(
+                        "Unexpected streamer error: pid=%d",
+                        self.__streamer_proc.pid
+                    )
                 else:
                     logger.exception("Can't start streamer")
                 await self.__kill_streamer_proc()
                 await asyncio.sleep(1)
 
     def __make_cmd(self, cmd: list[str]) -> list[str]:
-        return [
-            part.format(
-                unix=self.__unix_path,
-                process_name_prefix=self.__process_name_prefix,
-                **self.__params.get_params(),
-            )
-            for part in cmd
-        ]
+        params = self.__params.get_params()
+        
+        if cmd == self.__cmd:  # 主流程命令
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-f", params["ffmpeg_input_format"],
+                "-input_format", "mjpeg",
+                "-video_size", params.get("resolution", "1920x1080"),
+                "-framerate", str(params.get("desired_fps", 30)),
+                "-i", "/dev/video0",  # 视频设备
+                "-c:v", params["ffmpeg_codec"],
+                "-b:v", f"{params.get('h264_bitrate', 2000)}k",
+                "-deadline", "realtime",
+                "-cpu-used", "4",
+                "-f", "rtp",
+                "-"
+            ]
+            
+            whipinto_cmd = [
+                "whipinto",
+                "-i", "-",  # 从stdin读取
+                "-w", params["whip_url"]
+            ]
+            
+            if params["whip_token"]:
+                whipinto_cmd.extend(["-t", params["whip_token"]])
+            
+            return ffmpeg_cmd + ["|"] + whipinto_cmd
+        
+        return super().__make_cmd(cmd)
 
     async def __run_hook(self, name: str, cmd: list[str]) -> None:
         logger = get_logger()
@@ -447,8 +494,20 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
     async def __start_streamer_proc(self) -> None:
         assert self.__streamer_proc is None
         cmd = self.__make_cmd(self.__cmd)
-        self.__streamer_proc = await aioproc.run_process(cmd)
-        get_logger(0).info("Started streamer pid=%d: %s", self.__streamer_proc.pid, tools.cmdfmt(cmd))
+        
+        # 使用shell执行以支持管道
+        self.__streamer_proc = await aioproc.run_process(
+            " ".join(cmd),
+            shell=True,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        get_logger(0).info(
+            "Started ffmpeg+whipinto streamer pid=%d: %s",
+            self.__streamer_proc.pid,
+            tools.cmdfmt(cmd)
+        )
 
     async def __kill_streamer_proc(self) -> None:
         if self.__streamer_proc:
