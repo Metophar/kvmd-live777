@@ -1,6 +1,11 @@
 # Contributor: Maxim Devaev <mdevaev@gmail.com>
 # Author: Maxim Devaev <mdevaev@gmail.com>
 
+# =====
+# 注意：添加了live777集成
+# 1. 添加ffmpeg和live777依赖
+# 2. 添加live777配置文件
+# =====
 
 _variants=(
 	v0-hdmi:zero2w
@@ -172,6 +177,9 @@ package_kvmd() {
 	install -Dm755 -t "$pkgdir/usr/bin" scripts/kvmd-{bootconfig,gencert,certbot}
 
 	install -Dm644 -t "$pkgdir/usr/lib/systemd/system" configs/os/services/*
+	# 安装live777服务文件
+	install -Dm644 "$srcdir/../configs/os/services/kvmd-live777.service" "$pkgdir/usr/lib/systemd/system/kvmd-live777.service"
+	
 	install -DTm644 configs/os/sysusers.conf "$pkgdir/usr/lib/sysusers.d/kvmd.conf"
 	install -DTm644 configs/os/tmpfiles.conf "$pkgdir/usr/lib/tmpfiles.d/kvmd.conf"
 
@@ -182,6 +190,10 @@ package_kvmd() {
 	local _cfg_default="$pkgdir/usr/share/kvmd/configs.default"
 	mkdir -p "$_cfg_default"
 	cp -r configs/* "$_cfg_default"
+	
+	# 确保live777配置文件在默认配置目录中
+	mkdir -p "$_cfg_default/kvmd"
+	cp "$srcdir/../configs/kvmd/live777.yaml" "$_cfg_default/kvmd/"
 
 	find "$pkgdir" -name ".gitignore" -delete
 	find "$_cfg_default" -type f -exec chmod 444 '{}' \;
@@ -205,7 +217,7 @@ package_kvmd() {
 	install -Dm644 -t "$pkgdir/etc/kvmd" "$_cfg_default/kvmd"/web.css
 	mkdir -p "$pkgdir/etc/kvmd/override.d"
 
-	# 添加live777配置文件
+	# 安装live777配置文件到etc/kvmd
 	install -Dm644 -t "$pkgdir/etc/kvmd" "$_cfg_default/kvmd"/live777.yaml
 
 	mkdir -p "$pkgdir/var/lib/kvmd/"{msd,pst}
