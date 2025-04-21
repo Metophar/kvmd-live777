@@ -98,6 +98,11 @@ depends=(
 	raspberrypi-utils
 	"ustreamer>=6.33"
 
+	# 添加ffmpeg和live777依赖
+	"ffmpeg>=4.0"
+	"live777>=0.1.0"
+	"whipinto>=0.1.0"
+
 	# Systemd UDEV bug
 	"systemd>=248.3-2"
 
@@ -154,6 +159,7 @@ backup=(
 	etc/kvmd/nginx/nginx.conf.mako
 	etc/kvmd/janus/janus{,.plugin.ustreamer,.transport.websockets}.jcfg
 	etc/kvmd/web.css
+	etc/kvmd/live777.yaml
 )
 
 
@@ -198,6 +204,9 @@ package_kvmd() {
 	install -Dm600 -t "$pkgdir/etc/kvmd" "$_cfg_default/kvmd"/*.secret
 	install -Dm644 -t "$pkgdir/etc/kvmd" "$_cfg_default/kvmd"/web.css
 	mkdir -p "$pkgdir/etc/kvmd/override.d"
+
+	# 添加live777配置文件
+	install -Dm644 -t "$pkgdir/etc/kvmd" "$_cfg_default/kvmd"/live777.yaml
 
 	mkdir -p "$pkgdir/var/lib/kvmd/"{msd,pst}
 }

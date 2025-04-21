@@ -74,10 +74,10 @@ class _StreamerParams:
         h264_gop_min: int,
         h264_gop_max: int,
 
-        whip_url: str,              # live777的WHIP地址
+        whip_url: str = "http://localhost:7777/whip/pikvm",  # live777的WHIP地址
         whip_token: str = "",       # 可选的认证token
         ffmpeg_input_format: str = "v4l2",  # 输入格式
-        ffmpeg_codec: str = "libx264",   # WebRTC编码器
+        ffmpeg_codec: str = "libvpx-vp8",   # WebRTC编码器
     ) -> None:
 
         self.__has_quality = bool(quality)
@@ -100,6 +100,7 @@ class _StreamerParams:
             self.__params[self.__H264_GOP] = min(max(h264_gop, h264_gop_min), h264_gop_max)
             self.__limits[self.__H264_GOP] = {"min": h264_gop_min, "max": h264_gop_max}
 
+        # 添加live777相关参数
         self.__params.update({
             "whip_url": whip_url,
             "whip_token": whip_token,
@@ -141,6 +142,11 @@ class _StreamerParams:
             if key in params and enabled:
                 if self.__check_limits_min_max(key, params[key]):
                     new_params[key] = params[key]
+
+        # 处理live777相关参数
+        for key in ["whip_url", "whip_token", "ffmpeg_input_format", "ffmpeg_codec"]:
+            if key in params:
+                new_params[key] = params[key]
 
         self.__params = new_params
 
@@ -271,7 +277,7 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                 self.__stop_task = asyncio.create_task(delayed_stop())
 
     def is_working(self) -> bool:
-        # Запущено и не планирует останавливаться
+        # 检查streamer是否正在运行且没有计划停止
         return bool(self.__streamer_task and not self.__stop_task)
 
     # =====
@@ -348,11 +354,12 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
             try:
                 # 检查ffmpeg进程状态
                 if self.__streamer_proc.returncode is None:
+                    params = self.__params.get_params()
                     return {
                         "online": True,
-                        "encoder": "vp8",
-                        "resolution": self.__params.get_params().get("resolution", "1920x1080"),
-                        "fps": self.__params.get_params().get("desired_fps", 30),
+                        "encoder": params.get("ffmpeg_codec", "libvpx-vp8").split("-")[-1],  # 提取编码器名称
+                        "resolution": params.get("resolution", "1920x1080"),
+                        "fps": params.get("desired_fps", 30),
                     }
             except Exception:
                 get_logger().exception("Failed to get streamer state")
@@ -369,22 +376,16 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
     # =====
 
     async def take_snapshot(self, save: bool, load: bool, allow_offline: bool) -> (StreamerSnapshot | None):
+        # 注意：使用ffmpeg+live777时，快照功能可能不可用
+        # 我们需要重新实现或返回一个模拟值
+        logger = get_logger()
+        logger.warning("Snapshot feature is not available with ffmpeg+live777 streaming method")
+        
         if load:
             return self.__snapshot
-        logger = get_logger()
-        session = self.__ensure_client_session()
-        try:
-            snapshot = await session.take_snapshot(self.__snapshot_timeout)
-            if snapshot.online or allow_offline:
-                if save:
-                    self.__snapshot = snapshot
-                    self.__notifier.notify(self.__ST_SNAPSHOT)
-                return snapshot
-            logger.error("Stream is offline, no signal or so")
-        except (aiohttp.ClientConnectionError, aiohttp.ServerConnectionError) as ex:
-            logger.error("Can't connect to streamer: %s", tools.efmt(ex))
-        except Exception:
-            logger.exception("Invalid streamer response from /snapshot")
+            
+        # 这里可以考虑实现从ffmpeg获取单帧图像的逻辑
+        # 但目前先返回None，表示不支持此功能
         return None
 
     def remove_snapshot(self) -> None:
@@ -450,38 +451,6 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                 await self.__kill_streamer_proc()
                 await asyncio.sleep(1)
 
-    def __make_cmd(self, cmd: list[str]) -> list[str]:
-        params = self.__params.get_params()
-        
-        if cmd == self.__cmd:  # 主流程命令
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-f", params["ffmpeg_input_format"],
-                "-input_format", "mjpeg",
-                "-video_size", params.get("resolution", "1920x1080"),
-                "-framerate", str(params.get("desired_fps", 30)),
-                "-i", "/dev/video0",  # 视频设备
-                "-c:v", params["ffmpeg_codec"],
-                "-b:v", f"{params.get('h264_bitrate', 2000)}k",
-                "-deadline", "realtime",
-                "-cpu-used", "4",
-                "-f", "rtp",
-                "-"
-            ]
-            
-            whipinto_cmd = [
-                "whipinto",
-                "-i", "-",  # 从stdin读取
-                "-w", params["whip_url"]
-            ]
-            
-            if params["whip_token"]:
-                whipinto_cmd.extend(["-t", params["whip_token"]])
-            
-            return ffmpeg_cmd + ["|"] + whipinto_cmd
-        
-        return super().__make_cmd(cmd)
-
     async def __run_hook(self, name: str, cmd: list[str]) -> None:
         logger = get_logger()
         cmd = self.__make_cmd(cmd)
@@ -491,23 +460,46 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
         except Exception as ex:
             logger.exception("Can't execute command: %s", ex)
 
+    def __make_cmd(self, cmd: list[str]) -> list[str]:
+        params = self.__params.get_params()
+        cmd = list(cmd)  # Create a copy to avoid modifying the original
+        
+        # 替换参数占位符
+        for (index, arg) in enumerate(cmd):
+            for (name, value) in params.items():
+                if isinstance(arg, str) and "{" + name + "}" in arg:
+                    cmd[index] = arg.format(**{name: value})
+        
+        return cmd
+
     async def __start_streamer_proc(self) -> None:
         assert self.__streamer_proc is None
         cmd = self.__make_cmd(self.__cmd)
         
-        # 使用shell执行以支持管道
-        self.__streamer_proc = await aioproc.run_process(
-            " ".join(cmd),
-            shell=True,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
-        get_logger(0).info(
-            "Started ffmpeg+whipinto streamer pid=%d: %s",
-            self.__streamer_proc.pid,
-            tools.cmdfmt(cmd)
-        )
+        # 如果命令行中有管道符"|"，需要使用shell执行
+        if "|" in cmd:
+            shell_cmd = " ".join(cmd)
+            self.__streamer_proc = await asyncio.create_subprocess_shell(
+                shell_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            get_logger(0).info(
+                "Started ffmpeg+whipinto streamer with shell pid=%d: %s",
+                self.__streamer_proc.pid,
+                shell_cmd
+            )
+        else:
+            self.__streamer_proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            get_logger(0).info(
+                "Started streamer pid=%d: %s",
+                self.__streamer_proc.pid,
+                tools.cmdfmt(cmd)
+            )
 
     async def __kill_streamer_proc(self) -> None:
         if self.__streamer_proc:

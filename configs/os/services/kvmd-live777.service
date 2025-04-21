@@ -1,0 +1,20 @@
+[Unit]
+Description=PiKVM - Live777 WebRTC Server
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+ExecStart=/usr/bin/live777 -c /etc/kvmd/live777.yaml
+User=kvmd
+Group=kvmd
+
+# Hardening
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target 

@@ -140,6 +140,28 @@ def main() -> None:
             ],
         },
 
+        # 添加ffmpeg和live777依赖
+        install_requires=[
+            "aiohttp",
+            "aiofiles",
+            "passlib",
+            "pyotp",
+            "PyYAML",
+            "psutil",
+            "pyserial",
+            "PyQRCode",
+            "pypng",
+            "Pillow",
+            "setproctitle",
+            "hidapi",
+            "bleak"
+        ],
+        
+        # 添加ffmpeg和live777的系统依赖提示
+        extras_require={
+            "live777": ["ffmpeg>=4.0", "live777>=0.1.0", "whipinto>=0.1.0"],
+        },
+
         classifiers=[
             "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
             "Development Status :: 5 - Production/Stable",

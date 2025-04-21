@@ -1,0 +1,18 @@
+http:
+  listen: "0.0.0.0:7777"
+  cors: true
+
+ice_servers:
+  - urls: 
+    - "stun:stun.l.google.com:19302"
+
+auth:
+  secret: ""  # 可以设置一个密钥来增强安全性
+  tokens: []  # 可以添加访问令牌
+
+log:
+  level: "info"
+
+# 如果需要webhook通知
+webhook:
+  webhooks: [] 
