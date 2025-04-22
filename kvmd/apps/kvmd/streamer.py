@@ -77,7 +77,8 @@ class _StreamerParams:
         whip_url: str = "http://localhost:7777/whip/pikvm",  # live777的WHIP地址
         whip_token: str = "",       # 可选的认证token
         ffmpeg_input_format: str = "v4l2",  # 输入格式
-        ffmpeg_codec: str = "libvpx-vp8",   # WebRTC编码器
+        ffmpeg_codec: str = "libvpx",   # WebRTC编码器
+        rtsp_port: int = 8554,     # RTSP监听端口
     ) -> None:
 
         self.__has_quality = bool(quality)
@@ -106,6 +107,8 @@ class _StreamerParams:
             "whip_token": whip_token,
             "ffmpeg_input_format": ffmpeg_input_format,
             "ffmpeg_codec": ffmpeg_codec,
+            "rtsp_port": rtsp_port,
+            "process_name_prefix": "",  # 将在Streamer.__init__中设置
         })
 
     def get_features(self) -> dict:
@@ -144,7 +147,7 @@ class _StreamerParams:
                     new_params[key] = params[key]
 
         # 处理live777相关参数
-        for key in ["whip_url", "whip_token", "ffmpeg_input_format", "ffmpeg_codec"]:
+        for key in ["whip_url", "whip_token", "ffmpeg_input_format", "ffmpeg_codec", "rtsp_port"]:
             if key in params:
                 new_params[key] = params[key]
 
@@ -202,6 +205,10 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
         self.__post_stop_cmd = tools.build_cmd(post_stop_cmd, post_stop_cmd_remove, post_stop_cmd_append)
 
         self.__params = _StreamerParams(**params_kwargs)
+        # 设置process_name_prefix参数到params中
+        params = self.__params.get_params()
+        params["process_name_prefix"] = self.__process_name_prefix
+        self.__params.set_params(params)
 
         self.__stop_task: (asyncio.Task | None) = None
         self.__stop_wip = False
@@ -357,7 +364,7 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                     params = self.__params.get_params()
                     return {
                         "online": True,
-                        "encoder": params.get("ffmpeg_codec", "libvpx-vp8").split("-")[-1],  # 提取编码器名称
+                        "encoder": params.get("ffmpeg_codec", "libvpx").split("-")[-1],  # 提取编码器名称
                         "resolution": params.get("resolution", "1920x1080"),
                         "fps": params.get("desired_fps", 30),
                     }
@@ -476,8 +483,8 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
         assert self.__streamer_proc is None
         cmd = self.__make_cmd(self.__cmd)
         
-        # 如果命令行中有管道符"|"，需要使用shell执行
-        if "|" in cmd:
+        # 如果命令行中有管道符"|"或后台执行符"&"，需要使用shell执行
+        if "|" in cmd or "&" in cmd:
             shell_cmd = " ".join(cmd)
             self.__streamer_proc = await asyncio.create_subprocess_shell(
                 shell_cmd,
@@ -485,7 +492,7 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                 stderr=asyncio.subprocess.PIPE
             )
             get_logger(0).info(
-                "Started ffmpeg+whipinto streamer with shell pid=%d: %s",
+                "Started streamer with shell pid=%d: %s",
                 self.__streamer_proc.pid,
                 shell_cmd
             )

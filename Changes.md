@@ -101,6 +101,7 @@ class _StreamerParams:
 #### configs/kvmd/main/v3-hdmi-rpi4.yaml
 - 替换了ustreamer命令行参数为ffmpeg+whipinto参数
 - 添加了新的配置选项：whip_url、whip_token、ffmpeg_input_format和ffmpeg_codec
+- 修改了命令执行顺序：先启动whipinto监听RTSP，然后启动ffmpeg推送视频到RTSP地址
 
 ```yaml
 kvmd:
@@ -112,19 +113,27 @@ kvmd:
         whip_url: "http://localhost:7777/whip/pikvm"
         whip_token: ""
         ffmpeg_input_format: "v4l2"
-        ffmpeg_codec: "libvpx-vp8"
+        ffmpeg_codec: "libvpx"
+        rtsp_port: 8554
         cmd:
+            - "/usr/bin/whipinto"
+            - "-w"
+            - "{whip_url}"
+            - "-t"
+            - "{whip_token}"
+            - "-i"
+            - "rtsp-listen://127.0.0.1:{rtsp_port}"
+            - "--process-name-prefix={process_name_prefix}"
+            - "&"
             - "/usr/bin/ffmpeg"
             - "-f"
             - "{ffmpeg_input_format}"
-            - "-input_format"
-            - "mjpeg"
+            - "-i"
+            - "/dev/video0"
             - "-video_size"
             - "{resolution}"
-            - "-framerate"
+            - "-r"
             - "{desired_fps}"
-            - "-i"
-            - "/dev/kvmd-video"
             - "-c:v"
             - "{ffmpeg_codec}"
             - "-b:v"
@@ -134,18 +143,10 @@ kvmd:
             - "-cpu-used"
             - "4"
             - "-f"
-            - "rtp"
-            - "-"
-            - "|"
-            - "/usr/bin/whipinto"
-            - "-i"
-            - "-"
-            - "-w"
-            - "{whip_url}"
-            - "-t"
-            - "{whip_token}"
-            - "--exit-on-parent-death"
-            - "--process-name-prefix={process_name_prefix}"
+            - "rtsp"
+            - "-pkt_size"
+            - "1200"
+            - "rtsp://127.0.0.1:{rtsp_port}"
 ```
 
 #### configs/kvmd/live777.yaml (新增)
