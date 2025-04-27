@@ -149,7 +149,7 @@ class _StreamerParams:
         # 处理live777相关参数
         for key in ["whip_url", "whip_token", "ffmpeg_input_format", "ffmpeg_codec", "rtsp_port"]:
             if key in params:
-                new_params[key] = params[key]
+                    new_params[key] = params[key]
 
         self.__params = new_params
 
@@ -438,11 +438,8 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
                 await self.__start_streamer_proc()
                 assert self.__streamer_proc is not None
                 
-                # 同时监控stdout和stderr
-                await asyncio.gather(
-                    aioproc.log_stdout_infinite(self.__streamer_proc, logger),
-                    aioproc.log_stderr_infinite(self.__streamer_proc, logger)
-                )
+                # 只使用log_stdout_infinite监控输出
+                await aioproc.log_stdout_infinite(self.__streamer_proc, logger)
                 
                 raise RuntimeError("Streamer unexpectedly died")
             except asyncio.CancelledError:
@@ -489,7 +486,7 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
             self.__streamer_proc = await asyncio.create_subprocess_shell(
                 shell_cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.STDOUT  # 将stderr重定向到stdout
             )
             get_logger(0).info(
                 "Started streamer with shell pid=%d: %s",
@@ -500,7 +497,7 @@ class Streamer:  # pylint: disable=too-many-instance-attributes
             self.__streamer_proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.STDOUT  # 将stderr重定向到stdout
             )
             get_logger(0).info(
                 "Started streamer pid=%d: %s",

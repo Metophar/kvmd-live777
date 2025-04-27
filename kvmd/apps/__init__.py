@@ -168,8 +168,14 @@ def init(
 # =====
 def _init_config(config_path: str, override_options: list[str], **load_flags: bool) -> Section:
     config_path = os.path.expanduser(config_path)
+    print(f"Loading config from: {config_path}")
     try:
         raw_config: dict = load_yaml_file(config_path)
+        logging.info(f"Successfully loaded config from: {config_path}")
+        if "override" in raw_config:
+            logging.info(f"Config has override section with {len(raw_config['override'] or {})} entries")
+        if override_options:
+            logging.info(f"Applied {len(override_options)} CLI override options")
     except Exception as ex:
         raise SystemExit(f"ConfigError: Can't read config file {config_path!r}:\n{tools.efmt(ex)}")
     if not isinstance(raw_config, dict):

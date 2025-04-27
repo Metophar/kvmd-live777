@@ -59,7 +59,7 @@ class _StreamerParams:
             self.__streamer_proc = await asyncio.create_subprocess_shell(
                 shell_cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.STDOUT  # 将stderr重定向到stdout
             )
             get_logger(0).info(
                 "Started ffmpeg+whipinto streamer with shell pid=%d: %s",
@@ -70,7 +70,7 @@ class _StreamerParams:
             self.__streamer_proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.STDOUT  # 将stderr重定向到stdout
             )
             get_logger(0).info(
                 "Started streamer pid=%d: %s",
@@ -116,14 +116,19 @@ kvmd:
         ffmpeg_codec: "libvpx"
         rtsp_port: 8554
         cmd:
+            - "/usr/bin/v4l2-ctl"
+            - "--device=/dev/video0"
+            - "--query-dv-timing"
+            - "&"
+            - "/usr/bin/v4l2-ctl"
+            - "--device=/dev/video0"
+            - "--set-dv-bt-timing=query"
+            - "&"
             - "/usr/bin/whipinto"
             - "-w"
             - "{whip_url}"
-            - "-t"
-            - "{whip_token}"
             - "-i"
             - "rtsp-listen://127.0.0.1:{rtsp_port}"
-            - "--process-name-prefix={process_name_prefix}"
             - "&"
             - "/usr/bin/ffmpeg"
             - "-f"
@@ -164,7 +169,7 @@ auth:
   tokens: []
 
 log:
-  level: "info"
+  level: "debug"
 
 webhook:
   webhooks: []
@@ -197,6 +202,7 @@ WantedBy=multi-user.target
 ```
 
 #### configs/os/services/kvmd.service
+/usr/lib/systemd/system/kvmd.service
 ```ini
 [Unit]
 Description=PiKVM - The main daemon
