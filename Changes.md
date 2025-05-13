@@ -9,7 +9,7 @@
 
 ### 1. 核心组件修改
 
-#### kvmd/apps/kvmd/streamer.py
+#### /usr/lib/python3.13/site-packages/kvmd/apps/kvmd/streamer.py
 - 修改了`_StreamerParams`类，添加了live777相关参数（whip_url、whip_token等）
 - 更新了`__make_cmd`方法，支持通过配置文件参数生成ffmpeg和whipinto命令
 - 修改了`__start_streamer_proc`方法，支持使用shell执行管道命令
@@ -96,9 +96,17 @@ class _StreamerParams:
         return None
 ```
 
+#### /usr/lib/python3.13/site-packages/kvmd/apps/kvmd/server.py
+- `cur = (self.__has_stream_clients() or self.__snapshoter.snapshoting() or self.__stream_forever)` 由于没有配置__streamer_forever，这个条件永远为false，所以永远不会进入streamer
+
+```python
+cur = (self.__has_stream_clients() or self.__snapshoter.snapshoting() or True)
+```
+
 ### 2. 配置文件修改
 
 #### configs/kvmd/main/v3-hdmi-rpi4.yaml
+- /etc/kvmd/override.yaml
 - 替换了ustreamer命令行参数为ffmpeg+whipinto参数
 - 添加了新的配置选项：whip_url、whip_token、ffmpeg_input_format和ffmpeg_codec
 - 修改了命令执行顺序：先启动whipinto监听RTSP，然后启动ffmpeg推送视频到RTSP地址
@@ -177,7 +185,7 @@ webhook:
 
 ### 3. 服务配置修改
 
-#### configs/os/services/kvmd-live777.service (新增)
+#### /usr/share/kvmd/configs.default/os/services/kvmd-live777.service (新增)
 ```ini
 [Unit]
 Description=PiKVM - Live777 WebRTC Server
@@ -201,7 +209,7 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 ```
 
-#### configs/os/services/kvmd.service
+#### /usr/share/kvmd/configs.default/os/services/kvmd.service
 /usr/lib/systemd/system/kvmd.service
 ```ini
 [Unit]

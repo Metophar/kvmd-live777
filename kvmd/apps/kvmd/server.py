@@ -320,7 +320,7 @@ class KvmdServer(HttpServer):  # pylint: disable=too-many-arguments,too-many-ins
     async def __stream_controller(self) -> None:
         prev = False
         while True:
-            cur = (self.__has_stream_clients() or self.__snapshoter.snapshoting() or self.__stream_forever)
+            cur = (self.__has_stream_clients() or self.__snapshoter.snapshoting() or True)#self.__stream_forever)
             if not prev and cur:
                 await self.__streamer.ensure_start(reset=False)
             elif prev and not cur:

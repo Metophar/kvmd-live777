@@ -21,4 +21,17 @@
 
 
 from . import main
+from kvmd.apps.kvmd.streamer.live777 import Live777Handler
+
+def main() -> None:
+    # ... existing code ...
+
+    # 创建Live777处理器
+    live777_handler = Live777Handler(streamer)
+
+    # 添加WebSocket路由
+    app.router.add_get("/live777/ws", live777_handler.handle)
+
+    # ... existing code ...
+
 main()

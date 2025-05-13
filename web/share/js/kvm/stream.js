@@ -29,6 +29,7 @@ import {wm} from "../wm.js";
 import {JanusStreamer} from "./stream_janus.js";
 import {MediaStreamer} from "./stream_media.js";
 import {MjpegStreamer} from "./stream_mjpeg.js";
+import {Live777Streamer} from "./stream_live777.js";
 
 
 export function Streamer() {
@@ -183,6 +184,7 @@ export function Streamer() {
 			let sup_webrtc = JanusStreamer.is_webrtc_available();
 			let has_media = (f.h264 && sup_vd); // Don't check sup_h264 for sure
 			let has_janus = (__janus_imported && f.h264 && sup_webrtc); // Same
+			let has_live777 = (f.h264 && sup_webrtc); // Live777 requires WebRTC support
 
 			tools.info(
 				`Stream: Janus WebRTC state: features.h264=${f.h264},`
@@ -218,8 +220,11 @@ export function Streamer() {
 				tools.feature.setEnabled($("stream-mic"), false);
 			}
 
-			let mode = tools.storage.get("stream.mode", "janus");
+			let mode = tools.storage.get("stream.mode", "live777"); // 默认使用Live777模式
 			if (mode === "janus" && !has_janus) {
+				mode = "live777";
+			}
+			if (mode === "live777" && !has_live777) {
 				mode = "media";
 			}
 			if (mode === "media" && !has_media) {
@@ -304,9 +309,12 @@ export function Streamer() {
 			let allow_audio = !$("stream-video").muted;
 			let allow_mic = $("stream-mic-switch").checked;
 			__streamer = new JanusStreamer(__setActive, __setInactive, __setInfo, orient, allow_audio, allow_mic);
-			// Firefox doesn't support RTP orientation:
-			//  - https://bugzilla.mozilla.org/show_bug.cgi?id=1316448
 			tools.feature.setEnabled($("stream-orient"), !tools.browser.is_firefox);
+		} else if (mode === "live777") {
+			let allow_audio = !$("stream-video").muted;
+			let allow_mic = $("stream-mic-switch").checked;
+			__streamer = new Live777Streamer(__setActive, __setInactive, __setInfo, orient, allow_audio, allow_mic);
+			tools.feature.setEnabled($("stream-orient"), true);
 		} else {
 			if (mode === "media") {
 				__streamer = new MediaStreamer(__setActive, __setInactive, __setInfo, orient);
@@ -315,8 +323,8 @@ export function Streamer() {
 				__streamer = new MjpegStreamer(__setActive, __setInactive, __setInfo);
 				tools.feature.setEnabled($("stream-orient"), false);
 			}
-			tools.feature.setEnabled($("stream-audio"), false); // Enabling in stream_janus.js
-			tools.feature.setEnabled($("stream-mic"), false); // Ditto
+			tools.feature.setEnabled($("stream-audio"), false);
+			tools.feature.setEnabled($("stream-mic"), false);
 		}
 		if (wm.isWindowVisible($("stream-window"))) {
 			__streamer.ensureStream((__state && __state.streamer !== undefined) ? __state.streamer : null);
